@@ -1,0 +1,66 @@
+[project]
+name = "skills-registry-backend"
+version = "0.1.0"
+description = "Skills パッケージ（ZIP）の登録・検索・配布を行うレジストリの API"
+requires-python = ">=3.12"
+
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    # SQLAlchemy 2.0 の async ORM を使う。asyncpg は PostgreSQL 用の async ドライバ
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    # multipart/form-data（ファイルアップロード）の解析に FastAPI が要求する
+    "python-multipart>=0.0.17",
+    # SKILL.md の YAML frontmatter を読む
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "httpx>=0.28",
+    "ruff>=0.8",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E,F: pycodestyle/pyflakes / I: import 順 / B: バグになりやすい書き方
+# UP: 新しい構文への更新 / C4: 内包表記 / SIM: 冗長な条件の単純化
+select = ["E", "F", "I", "B", "UP", "C4", "SIM"]
+
+[tool.pytest.ini_options]
+# パッケージとしてインストールせずに `app` を import できるようにする
+pythonpath = ["."]
+testpaths = ["tests"]
+# 全テストが async なので、個々に @pytest.mark.asyncio を書かずに済ませる
+asyncio_mode = "auto"
+# イベントループをセッション全体で 1 つにする。エンジン（＝接続プール）が
+# モジュールグローバルなので、テストごとにループが変わると
+# asyncpg の接続が「別のループに属している」と怒られる
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/main.py"]
+# SQLAlchemy の async は内部で greenlet を使って sync ORM を駆動する。
+# これを宣言しないと、await から戻った直後の行が「未実行」に見えてしまい、
+# 実際には通っているコードがカバレッジから落ちる（learnings.md 参照）
+concurrency = ["thread", "greenlet"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    # Protocol の本体（...）は実行されない
+    "\\.\\.\\.",
+]
