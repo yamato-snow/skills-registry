@@ -113,6 +113,7 @@ tags: [slack, notification]
 | [docs/design.md](docs/design.md) | 全体像（構成図・ER 図・API 仕様・ディレクトリ構成）を 1 ページに |
 | [docs/adr/](docs/adr/README.md) | 設計判断 7 本。各案の Pros / Cons と、**いつこの判断を見直すか** |
 | [docs/learnings.md](docs/learnings.md) | 実装中に詰まった点と、迷って決めきれなかったこと |
+| [docs/manual-test.md](docs/manual-test.md) | 手動テスト手順書（アップロード 16 件 + 検索 19 件・判定欄つき） |
 | [docs/tasks.md](docs/tasks.md) | 実装のタスク分解 |
 
 とくに次の 3 つが中核。
@@ -174,6 +175,27 @@ npm run lint && npm run format:check && npm run build
 ### 環境変数
 
 すべて [docs/design.md §7](docs/design.md) に一覧がある。compose を使う場合は設定済み。
+
+### 手動テスト
+
+自動テストが守っているものとは別に、**画面から正常系・異常系を一通り確かめる**ための
+手順書がある: [docs/manual-test.md](docs/manual-test.md)（アップロード 16 件 + 検索 19 件、判定欄つき）。
+
+試験用の ZIP はリポジトリに同梱せず、その場で生成する。危険なエントリ（path traversal・
+symlink）を含む ZIP をクローンした人の手元に置かないため（[ADR-002](docs/adr/ADR-002-zip-security-in-memory-inspection.md) の帰結）。
+
+```bash
+docker compose down -v && docker compose up -d --build
+```
+
+```bash
+cd backend && python3 scripts/make_test_zips.py && python3 scripts/seed_search_data.py
+```
+
+`make_test_zips.py` は 16 パターンを `manual-test/zips/`（gitignored）へ出力し、
+`seed_search_data.py` は検索確認用の 8 件を **API 経由で**投入する（投入自体がアップロード
+経路の回帰確認を兼ねる）。どちらも**標準ライブラリだけで動く**ので、仮想環境も依存の
+インストールも要らない。
 
 ---
 

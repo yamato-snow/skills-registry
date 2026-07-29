@@ -125,7 +125,7 @@ erDiagram
 - できないこと: カラム追加・型変更が既存 DB に反映されない。スキーマを変えたら volume を作り直す必要がある
 - 移行時期: **データを消せなくなった時点**（＝誰かが本気で使い始めた時点）で Alembic を導入する。それ以前に入れても、マイグレーションファイルは全部 initial revision に潰れる
 
-> **フェーズ 2 で `skill_versions.skill_md_body` を追加した**（[ADR-007](adr/ADR-007-store-skill-md-body.md)）。既存の開発 DB には反映されないので、更新後は `docker compose down -v` が必要。データはデモのみで消して困らない。**「消せる」状態を保っていることが、Alembic をまだ入れない根拠そのもの**である。
+> **フェーズ 2 で `skill_versions.skill_md_body` を追加した**（[ADR-007](adr/ADR-007-store-skill-md-body.md)）。既存の開発 DB には反映されないので、更新後は `docker compose down -v` が必要。データはデモとシードのみで、[`backend/scripts/seed_search_data.py`](../backend/scripts/seed_search_data.py) を 1 回叩けば戻る。**「消せる」状態を保っていることが、Alembic をまだ入れない根拠そのもの**である。
 
 ## 4. API
 
@@ -216,6 +216,7 @@ skills-registry/
 ├── docs/
 │   ├── adr/                     ADR 7本 + 索引
 │   ├── design.md                このファイル
+│   ├── manual-test.md           手動テスト手順書（判定欄つき）
 │   ├── tasks.md                 実装タスク分解
 │   └── learnings.md             ハマった点・迷った判断（実装中に随時追記）
 ├── backend/
@@ -237,6 +238,9 @@ skills-registry/
 │   │   └── api/
 │   │       ├── deps.py          DI（DB セッション / ストレージ）
 │   │       └── routes/skills.py エンドポイント
+│   ├── scripts/
+│   │   ├── make_test_zips.py    手動テスト用 ZIP を 16 パターン生成（同梱しない）
+│   │   └── seed_search_data.py  検索試験用データを API 経由で投入
 │   ├── tests/
 │   │   ├── conftest.py
 │   │   ├── helpers.py           make_skill_zip()（ZIP を動的生成）
