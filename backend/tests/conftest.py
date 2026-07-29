@@ -17,24 +17,48 @@ from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
+from sqlalchemy import make_url, text
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.api.deps import get_storage
+from app.core.config import settings
 from app.db.base import Base
 from app.db.session import engine
 from app.main import app
 from app.storage.local import LocalStorage
 
 
+async def _ensure_test_database() -> None:
+    """テスト用 DB（<開発用>_test）が無ければ作る.
+
+    CREATE DATABASE はトランザクション内で実行できないので AUTOCOMMIT で繋ぐ。
+    接続先は同じサーバの管理用 DB（postgres）。
+    """
+    url = make_url(settings.database_url)
+    target = url.database
+    admin_engine = create_async_engine(url.set(database="postgres"), isolation_level="AUTOCOMMIT")
+    try:
+        async with admin_engine.connect() as conn:
+            exists = await conn.scalar(
+                text("SELECT 1 FROM pg_database WHERE datname = :name"), {"name": target}
+            )
+            if not exists:
+                # DB 名は内部生成（設定値 + _test）なので、識別子として直接埋め込む
+                await conn.execute(text(f'CREATE DATABASE "{target}"'))
+    finally:
+        await admin_engine.dispose()
+
+
 def database_reachable() -> bool:
     """DB へ接続できるか（test_api_skills のスキップ判定に使う）.
 
     フィクスチャの外＝イベントループが立つ前に呼ばれるので、
-    使い捨てのループで確認する。
+    使い捨てのループで確認する。ついでにテスト用 DB を用意する。
     """
 
     async def check() -> bool:
         try:
+            await _ensure_test_database()
             async with engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
             return True
