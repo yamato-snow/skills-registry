@@ -16,7 +16,9 @@ out/
 next-env.d.ts
 
 # アップロードされた ZIP の保管先（compose がバインドマウントする。成果物なので追跡しない）
-storage/
+# 先頭の / でリポジトリ直下のみを対象にする。これがないと app/storage/（実装コード）
+# まで巻き込んで無視してしまう
+/storage/
 
 # 環境変数
 .env
@@ -24,3 +26,4 @@ storage/
 
 # OS
 .DS_Store
+*.egg-info/

@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* システムフォントを使う（next/font/google を外した理由は layout.tsx を参照）。
+     日本語フォントを明示的に並べているのは、指定がないと環境によって
+     游ゴシックとヒラギノで行間が大きくずれるため */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", Meiryo,
+    sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+}
