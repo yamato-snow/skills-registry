@@ -1,0 +1,68 @@
+# ローカル開発と動作確認のための構成。
+# `docker compose up --build` だけで db / backend / frontend が揃うことを目標にしている
+# （README を読んだ第三者が 5 分で起動できる、というのが完了条件のひとつ）。
+#
+# 設定値はすべて環境変数で注入する。ECS のタスク定義へ移すときに
+# 「何を渡せばよいか」がこのファイルを見れば分かる状態を保つため。
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: skills_registry
+    ports:
+      # ホストから psql や pytest で直接繋げるように公開する。
+      # 5432 は他の PostgreSQL と衝突しやすいので、ホスト側は 55432 にずらす
+      - "55432:5432"
+    volumes:
+      # named volume に置く。バインドマウントにすると macOS でのファイル I/O が
+      # 遅く、権限問題も起きやすい
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      # backend の depends_on: service_healthy が参照する。
+      # コンテナが起動していても PostgreSQL が接続を受け付けるまでには間があり、
+      # これがないと backend が起動時の create_all で失敗する
+      test: ["CMD-SHELL", "pg_isready -U postgres -d skills_registry"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      # compose 内では db をサービス名で解決する（ホストの 55432 ではない）
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/skills_registry
+      STORAGE_DIR: /data/storage
+      MAX_TOTAL_SIZE: "52428800" # 50MB
+      MAX_FILES: "500"
+      # ブラウザ（アップロード画面）から直接叩かれるため許可が要る（ADR-005）
+      CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8000:8000"
+    volumes:
+      # ZIP 原本の保管先。コンテナを作り直してもアップロード済みファイルが
+      # 残るようにホストへ逃がす。本番では S3Storage に差し替わる（ADR-003）
+      - ./storage:/data/storage
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      # Server Component からの取得。compose 内部のネットワークで解決する
+      INTERNAL_API_URL: http://backend:8000
+      # ブラウザからの取得。ビルド時にバンドルへ埋め込まれるため
+      # build args としても渡す必要がある（ADR-005 の二重 URL 問題）
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  db_data:
