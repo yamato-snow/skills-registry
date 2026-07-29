@@ -106,15 +106,38 @@ export async function uploadSkillFromBrowser(file: File): Promise<UploadResult> 
   const form = new FormData();
   form.append("file", file);
 
-  const response = await fetch(`${PUBLIC_API_URL}/skills`, {
-    method: "POST",
-    body: form,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${PUBLIC_API_URL}/skills`, {
+      method: "POST",
+      body: form,
+    });
+  } catch {
+    // API へ到達できなかった（接続拒否・名前解決失敗・CORS で遮断）。
+    // fetch はこれらをまとめて `TypeError: Failed to fetch` にしてしまい、
+    // 原因の手がかりが何も残らない。**どこへ投げたのか**だけでも見せれば、
+    // ポートの取り違え（この構成で最も起きやすい原因）はその場で気づける。
+    //
+    // NEXT_PUBLIC_API_URL はビルド時にバンドルへ焼き込まれる（ADR-005 /
+    // learnings.md #9）ので、compose のポートを変えたのにイメージを
+    // 作り直していない、という食い違いが起きうる
+    throw new Error(
+      `API（${PUBLIC_API_URL}）へ接続できませんでした。` +
+        "backend が起動しているか、この URL のポートが実際の公開ポートと" +
+        "一致しているかを確認してください" +
+        "（ポートを変えた場合は docker compose up --build でフロントを作り直す必要があります）。",
+    );
+  }
 
   if (!response.ok) {
-    // API は検証エラーを日本語の detail で返す。そのまま画面に出せる
     const body = await response.json().catch(() => null);
-    throw new Error(body?.detail ?? `アップロードに失敗しました (${response.status})`);
+    // API は検証エラーを日本語の detail（文字列）で返す。そのまま画面に出せる。
+    // ただし FastAPI 自身が返す 422 だけは detail が配列なので、素通しすると
+    // 画面に "[object Object]" が出る
+    const detail: unknown = body?.detail;
+    throw new Error(
+      typeof detail === "string" ? detail : `アップロードに失敗しました (${response.status})`,
+    );
   }
   return (await response.json()) as UploadResult;
 }
