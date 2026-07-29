@@ -11,6 +11,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 from app.db.models import Skill, SkillVersion
+from app.services.skill_service import SkillHit
 
 
 class FileEntryOut(BaseModel):
@@ -26,8 +27,8 @@ class VersionOut(BaseModel):
     created_at: datetime
 
 
-class SkillSummaryOut(BaseModel):
-    """一覧に出す 1 件分（最新版のメタデータ）."""
+class SkillBaseOut(BaseModel):
+    """一覧と詳細に共通する、最新版のメタデータ."""
 
     id: uuid.UUID
     name: str
@@ -37,32 +38,54 @@ class SkillSummaryOut(BaseModel):
     updated_at: datetime
 
     @classmethod
-    def from_model(cls, skill: Skill) -> "SkillSummaryOut":
+    def _base_fields(cls, skill: Skill) -> dict:
         latest = skill.latest_version
         assert latest is not None  # 版のない Skill は登録経路上つくられない
+        return {
+            "id": skill.id,
+            "name": skill.name,
+            "description": latest.description,
+            "tags": sorted(tag.name for tag in skill.tags),
+            "latest_version": latest.version,
+            "updated_at": latest.created_at,
+        }
+
+
+class SkillSummaryOut(SkillBaseOut):
+    """一覧に出す 1 件分.
+
+    `matched_fields` / `snippet` は「なぜこの Skill が出てきたか」の説明で、
+    `q` 指定時にだけ中身が入る（ADR-006）。とくに本文だけに当たった場合、
+    これが無いと利用者には理由の分からないヒットに見える。
+    """
+
+    matched_fields: list[str] = []
+    snippet: str | None = None
+
+    @classmethod
+    def from_hit(cls, hit: SkillHit) -> "SkillSummaryOut":
         return cls(
-            id=skill.id,
-            name=skill.name,
-            description=latest.description,
-            tags=sorted(tag.name for tag in skill.tags),
-            latest_version=latest.version,
-            updated_at=latest.created_at,
+            **cls._base_fields(hit.skill),
+            matched_fields=hit.matched_fields,
+            snippet=hit.snippet,
         )
 
 
-class SkillDetailOut(SkillSummaryOut):
-    """詳細。一覧の内容 + 最新版のファイルツリー + 全版の履歴."""
+class SkillDetailOut(SkillBaseOut):
+    """詳細。一覧の内容 + SKILL.md 本文 + ファイルツリー + 全版の履歴."""
 
+    # 最新版の SKILL.md 全文。画面では Markdown として描画する（ADR-007）
+    skill_md_body: str
     file_tree: list[FileEntryOut]
     versions: list[VersionOut]
 
     @classmethod
     def from_model(cls, skill: Skill) -> "SkillDetailOut":
-        summary = SkillSummaryOut.from_model(skill)
         latest = skill.latest_version
         assert latest is not None
         return cls(
-            **summary.model_dump(),
+            **cls._base_fields(skill),
+            skill_md_body=latest.skill_md_body,
             file_tree=[FileEntryOut(**entry) for entry in latest.file_tree],
             # 新しい版を上に出す
             versions=[VersionOut.model_validate(v) for v in reversed(skill.versions)],

@@ -99,16 +99,26 @@ async def upload_skill(
 @router.get("", response_model=list[SkillSummaryOut], summary="一覧・検索")
 async def list_skills(
     db: DbSession,
-    q: Annotated[str | None, Query(description="name / description への部分一致")] = None,
-    tag: Annotated[str | None, Query(description="タグの完全一致")] = None,
+    q: Annotated[
+        str | None,
+        Query(
+            description=(
+                "空白区切りの複数語。全語が name / description / SKILL.md 本文の"
+                "いずれかに当たるものだけを、関連度順で返す"
+            )
+        ),
+    ] = None,
+    # 繰り返しパラメータ（?tag=a&tag=b）で複数指定でき、意味は AND（絞り込み）。
+    # URL がそのまま検索条件なので、共有・ブックマークできる性質を保てる
+    tag: Annotated[list[str] | None, Query(description="タグの完全一致（複数指定は AND）")] = None,
 ) -> list[SkillSummaryOut]:
-    skills = await skill_service.list_skills(db, q=q, tag=tag)
-    return [SkillSummaryOut.from_model(skill) for skill in skills]
+    hits = await skill_service.list_skills(db, q=q, tags=tag)
+    return [SkillSummaryOut.from_hit(hit) for hit in hits]
 
 
 @router.get("/{skill_id}", response_model=SkillDetailOut, summary="詳細")
 async def get_skill(skill_id: uuid.UUID, db: DbSession) -> SkillDetailOut:
-    skill = await skill_service.get_skill(db, skill_id)
+    skill = await skill_service.get_skill(db, skill_id, with_body=True)
     if skill is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Skill が見つかりません。")
     return SkillDetailOut.from_model(skill)

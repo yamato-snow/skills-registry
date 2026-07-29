@@ -143,6 +143,112 @@ async def test_検索語のワイルドカードはエスケープされる(clie
     assert (await client.get("/skills", params={"q": "%"})).json() == []
 
 
+async def test_本文が検索対象になりスニペットが返る(client: AsyncClient):
+    """description に無くても本文にあれば見つかる（ADR-007）."""
+    await upload(
+        client,
+        make_skill_zip(
+            skill_md=build_skill_md(
+                "notifier", "通知を送る", ["slack"], body="# 使い方\n\nWebhook URL を設定する。"
+            )
+        ),
+    )
+
+    found = (await client.get("/skills", params={"q": "webhook"})).json()
+    assert [s["name"] for s in found] == ["notifier"]
+    assert found[0]["matched_fields"] == ["body"]
+    # なぜ当たったのかが一覧のその場で分かる
+    assert "Webhook" in found[0]["snippet"]
+
+
+async def test_qが無ければmatched_fieldsもスニペットも空(client: AsyncClient):
+    await upload(client, make_skill_zip())
+    item = (await client.get("/skills")).json()[0]
+    assert item["matched_fields"] == []
+    assert item["snippet"] is None
+
+
+async def test_複数語はANDで効く(client: AsyncClient):
+    await upload(
+        client,
+        make_skill_zip(skill_md=build_skill_md("slack-notifier", "Slack へ通知する", ["slack"])),
+    )
+    await upload(
+        client,
+        make_skill_zip(skill_md=build_skill_md("slack-uploader", "Slack へ添付を送る", ["slack"])),
+    )
+
+    # 片方の語しか持たない Skill は落ちる
+    both = (await client.get("/skills", params={"q": "slack 通知"})).json()
+    assert [s["name"] for s in both] == ["slack-notifier"]
+    # 全角空白でも同じ結果になる
+    zenkaku = (await client.get("/skills", params={"q": "slack　通知"})).json()
+    assert [s["name"] for s in zenkaku] == ["slack-notifier"]
+    # どちらも当たらない語を足すと 0 件
+    assert (await client.get("/skills", params={"q": "slack 存在しない"})).json() == []
+
+
+async def test_q指定時は関連度順に並ぶ(client: AsyncClient):
+    """name 3 点 > description 2 点 > 本文 1 点（ADR-006）."""
+    # 更新日時の降順とは逆の順で登録し、日時順の結果と区別できるようにする
+    await upload(
+        client,
+        make_skill_zip(skill_md=build_skill_md("name-hit", "説明", body="本文")),
+    )
+    await upload(
+        client,
+        make_skill_zip(skill_md=build_skill_md("desc", "name-hit を含む説明", body="本文")),
+    )
+    await upload(
+        client,
+        make_skill_zip(skill_md=build_skill_md("body", "説明", body="name-hit を含む本文")),
+    )
+
+    ranked = [s["name"] for s in (await client.get("/skills", params={"q": "name-hit"})).json()]
+    assert ranked == ["name-hit", "desc", "body"]
+
+
+async def test_関連度が同点なら更新日時の降順(client: AsyncClient):
+    await upload(client, make_skill_zip(skill_md=build_skill_md("tie-old", "説明")))
+    await upload(client, make_skill_zip(skill_md=build_skill_md("tie-new", "説明")))
+
+    ranked = [s["name"] for s in (await client.get("/skills", params={"q": "tie"})).json()]
+    assert ranked == ["tie-new", "tie-old"]
+
+
+async def test_複数タグはANDで絞り込む(client: AsyncClient):
+    await upload(
+        client,
+        make_skill_zip(skill_md=build_skill_md("both", "説明", ["slack", "notification"])),
+    )
+    await upload(client, make_skill_zip(skill_md=build_skill_md("one", "説明", ["slack"])))
+
+    # 繰り返しパラメータ ?tag=slack&tag=notification
+    filtered = await client.get("/skills", params=[("tag", "slack"), ("tag", "notification")])
+    assert [s["name"] for s in filtered.json()] == ["both"]
+    # 1 つだけなら両方出る
+    assert len((await client.get("/skills", params={"tag": "slack"})).json()) == 2
+
+
+async def test_詳細はSKILL_mdの本文を返す(client: AsyncClient):
+    body = "# 使い方\n\nここに手順を書く。"
+    response = await upload(
+        client, make_skill_zip(skill_md=build_skill_md("with-body", "説明", body=body))
+    )
+    detail = (await client.get(f"/skills/{response.json()['id']}")).json()
+    assert detail["skill_md_body"] == body
+    # frontmatter は含まない（name / description は構造化して別に持っている）
+    assert "---" not in detail["skill_md_body"]
+
+
+async def test_frontmatterのnameは本文ヒットにならない(client: AsyncClient):
+    """本文に frontmatter を含めると、name ヒットが常に本文ヒットも兼ねてしまう."""
+    await upload(client, make_skill_zip(skill_md=build_skill_md("uniquename", "説明", body="本文")))
+    found = (await client.get("/skills", params={"q": "uniquename"})).json()
+    assert found[0]["matched_fields"] == ["name"]
+    assert found[0]["snippet"] is None
+
+
 async def test_一覧は最新版の更新日時の降順(client: AsyncClient):
     await upload(client, make_skill_zip(skill_md=build_skill_md("first", "1 番目")))
     await upload(client, make_skill_zip(skill_md=build_skill_md("second", "2 番目")))

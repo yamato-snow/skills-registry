@@ -71,6 +71,9 @@ class SkillPackage:
     skill_md_path: str = ""
     file_tree: list[FileEntry] = field(default_factory=list)
     total_size: int = 0
+    # frontmatter を除いた SKILL.md 本文。検証のためにどのみちメモリへ読んで
+    # いるものを渡すだけなので、追加の I/O は発生しない（ADR-007）
+    body: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -156,12 +159,18 @@ def _is_noise(path: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def parse_frontmatter(text: str) -> dict[str, Any]:
-    """SKILL.md 先頭の YAML frontmatter を取り出す.
+def split_frontmatter(text: str) -> tuple[str, str]:
+    """SKILL.md を「frontmatter の中身」と「その後ろの本文」に切り分ける.
 
-    `---` で挟まれたブロックを手で切り出してから PyYAML に渡す。
-    ファイル全体を YAML として読ませないのは、frontmatter の後ろは
-    Markdown 本文であり YAML として妥当である保証がないため。
+    `---` で挟まれたブロックを手で切り出す。ファイル全体を YAML として
+    読ませないのは、frontmatter の後ろは Markdown 本文であり YAML として
+    妥当である保証がないため。
+
+    **本文を frontmatter と分けて取り出すことに意味がある**（ADR-007）。
+    frontmatter には name / description がそのまま書かれているので、これを
+    本文に含めたまま検索対象にすると「name に当たった Skill は本文にも
+    当たったことになる」という常に真の判定が混ざり、ヒット箇所の表示も
+    スニペットもメタデータの再掲になってしまう。
     """
     # UTF-8 BOM 付きで保存されているケースがある（先頭が BOM だと "---" 判定に落ちる）
     stripped = text.lstrip("﻿")
@@ -184,6 +193,13 @@ def parse_frontmatter(text: str) -> dict[str, Any]:
         )
 
     block = "\n".join(lines[1:end_index])
+    body = "\n".join(lines[end_index + 1 :]).strip()
+    return block, body
+
+
+def parse_frontmatter(text: str) -> dict[str, Any]:
+    """SKILL.md 先頭の YAML frontmatter をマッピングとして読む."""
+    block, _ = split_frontmatter(text)
     try:
         data = yaml.safe_load(block)
     except yaml.YAMLError as exc:
@@ -385,6 +401,7 @@ def inspect_skill_zip(
     except UnicodeDecodeError as exc:
         raise InvalidPackageError(f"{SKILL_MD_FILENAME} を UTF-8 として読み取れません。") from exc
 
+    _, body = split_frontmatter(text)
     frontmatter = parse_frontmatter(text)
     return SkillPackage(
         name=_extract_name(frontmatter),
@@ -393,4 +410,5 @@ def inspect_skill_zip(
         skill_md_path=skill_md_path,
         file_tree=file_tree,
         total_size=total_size,
+        body=body,
     )
