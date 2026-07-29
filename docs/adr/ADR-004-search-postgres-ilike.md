@@ -2,6 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-07-29
+- **Amended by**: [ADR-006](ADR-006-search-multi-token-relevance-snippet.md)（当たり方の質を拡張。`ILIKE` 採用と拡張パスは維持）
 
 ## Context
 

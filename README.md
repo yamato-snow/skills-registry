@@ -52,9 +52,21 @@ EOF
 (cd /tmp && zip -r my-skill.zip my-skill)
 ```
 
-2. 一覧で検索し、詳細でファイル構成と版履歴を確認する
+2. 一覧で検索し、詳細で `SKILL.md` の中身・ファイル構成・版履歴を確認する
 3. 同じ名前のまま `SKILL.md` を書き換えて再アップロードすると、**新しい版**として追加される
 4. 危険な ZIP（`../` を含むもの等）を投げると、日本語のエラーで拒否される
+
+> **既にフェーズ 1 を動かしていた場合は、先に `docker compose down -v` が必要。**
+> `SKILL.md` 本文を保存するカラムが増えており（[ADR-007](docs/adr/ADR-007-store-skill-md-body.md)）、マイグレーションは起動時の `create_all` 任せなので既存の DB には反映されない。
+
+### 検索の使い方
+
+- **空白区切りで語を足すほど絞れる**（AND）。全角空白でも同じ（`slack 通知` / `slack　通知`）
+- 検索対象は **名前・説明・`SKILL.md` 本文**の 3 つ。当たった場所は各カードに「ヒット: 名前・本文」と出る。本文に当たった場合はその周辺が抜粋で表示される
+- `q` を指定すると**関連度順**（名前 > 説明 > 本文）に並ぶ。指定しなければ更新日時の降順
+- **タグは複数選べる**（AND）。タグを押すと絞り込みに足され、もう一度押すと外れる。条件はそのまま URL に出るので、共有もブックマークもできる
+
+判断の理由は [ADR-006](docs/adr/ADR-006-search-multi-token-relevance-snippet.md) にある。
 
 ### 止める
 
@@ -99,14 +111,15 @@ tags: [slack, notification]
 | ドキュメント | 内容 |
 |---|---|
 | [docs/design.md](docs/design.md) | 全体像（構成図・ER 図・API 仕様・ディレクトリ構成）を 1 ページに |
-| [docs/adr/](docs/adr/README.md) | 設計判断 5 本。各案の Pros / Cons と、**いつこの判断を見直すか** |
+| [docs/adr/](docs/adr/README.md) | 設計判断 7 本。各案の Pros / Cons と、**いつこの判断を見直すか** |
 | [docs/learnings.md](docs/learnings.md) | 実装中に詰まった点と、迷って決めきれなかったこと |
 | [docs/tasks.md](docs/tasks.md) | 実装のタスク分解 |
 
-とくに次の 2 つが中核。
+とくに次の 3 つが中核。
 
 - **[ADR-002](docs/adr/ADR-002-zip-security-in-memory-inspection.md): ZIP をディスクに展開しない** — `extract` / `extractall` を一度も呼ばない。ファイルシステムへ書き込む処理が存在しなければ、path traversal も symlink 攻撃も成立する先がない。攻撃を検知するのではなく、攻撃が成立する経路を作らない
 - **[ADR-001](docs/adr/ADR-001-zip-parsing-sync-vs-async.md): 同期処理を選ぶ** — 非同期ワーカーが解決する問題を、この規模ではまだ抱えていない。ただし「いつ非同期化すべきか」の基準は 3 つ明記してある
+- **[ADR-006](docs/adr/ADR-006-search-multi-token-relevance-snippet.md): 検索は速くせず、当たり方を直す** — 3 件しかないシステムで pg_trgm を入れても得るものがない。実際に効いていなかったのは複数語・順位・本文の 3 点で、そこだけを `ILIKE` のまま直した
 
 ### 構成
 
@@ -134,10 +147,15 @@ uv venv --python 3.12 .venv && uv pip install -e ".[dev]"
 
 ```bash
 docker compose up -d db
-cd backend && .venv/bin/pytest --cov
 ```
 
-テストは開発用とは**別の DB**（`skills_registry_test`）を自動で作って使う。開発中のデータが消えないようにするため（[learnings.md](docs/learnings.md) 参照）。DB が起動していない場合、API テストはスキップされ、`zip_inspector` の単体テストだけが走る。
+```bash
+cd backend && DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:55432/skills_registry_test .venv/bin/pytest --cov
+```
+
+`DATABASE_URL` を明示するのは 2 つの理由から。**ホスト側のポートが 55432 にずれている**こと（compose の `db` は `55432:5432`。他プロジェクトの PostgreSQL と衝突しないようにするため）と、**開発中のデータを消さないよう別の DB 名（`skills_registry_test`）を使う**こと。この DB は無ければ自動で作られる。
+
+DB へ接続できない場合、API テストはスキップされ、`zip_inspector` と `search` の単体テストだけが走る。
 
 ```bash
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
@@ -164,6 +182,6 @@ npm run lint && npm run format:check && npm run build
 プロトタイプとしての割り切りを明示しておく（[docs/design.md §8](docs/design.md) に詳細）。
 
 - **検索は件数に線形**。数千件を超えたら `pg_trgm` を検討する（アプリのクエリ変更は不要）
-- **マイグレーションは起動時 `create_all`**。スキーマを変えたら volume を作り直す必要がある。Alembic はデータを消せなくなった時点で導入する
+- **マイグレーションは起動時 `create_all`**。スキーマを変えたら `docker compose down -v` で volume を作り直す必要がある。Alembic はデータを消せなくなった時点で導入する
 - **ローカルストレージは ECS ではエフェメラル**。本番化には `S3Storage` の実装が必須（差し替えは DI 1 行）
 - **認証・認可は未実装**。ロールの設計と嵌め込み位置だけ [design.md §6](docs/design.md) に残してある
