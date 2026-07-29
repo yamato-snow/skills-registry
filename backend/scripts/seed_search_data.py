@@ -2,8 +2,10 @@
 """検索試験用のデータを **API 経由で** 投入する（`docs/manual-test.md` §3 と対応）.
 
     docker compose up -d
-    cd backend && uv run python scripts/seed_search_data.py
-    # ポートを変えている場合: uv run python scripts/seed_search_data.py http://localhost:8010
+    cd backend && python3 scripts/seed_search_data.py
+    # ポートを変えている場合: python3 scripts/seed_search_data.py http://localhost:8010
+
+標準ライブラリだけで動くので、仮想環境も依存のインストールも要らない。
 
 DB へ直接 INSERT せず `POST /skills` を叩くのは、**シード投入それ自体が
 アップロード経路の回帰確認を兼ねる**ため。8 件が 201 で返らなければ、
@@ -15,7 +17,7 @@ DB へ直接 INSERT せず `POST /skills` を叩くのは、**シード投入そ
 という仕様どおりの挙動）。**やり直したいときは DB ごと作り直す**:
 
     docker compose down -v && docker compose up -d
-    uv run python scripts/seed_search_data.py
+    python3 scripts/seed_search_data.py
 
 「消しても 1 コマンドで戻る」状態を保っていることが、Alembic をまだ入れない
 根拠でもある（design.md §3 のマイグレーション方針）。
@@ -167,9 +169,12 @@ def main() -> int:
     if not wait_for_api(api):
         print(
             f"{api}/health に {STARTUP_TIMEOUT_SECONDS} 秒待っても繋がりませんでした。"
-            "\n`docker compose up -d` が終わっているか、ポートを変えていないか確認してください"
-            "\n（変えている場合は引数で渡します: "
-            "uv run python scripts/seed_search_data.py http://localhost:8010）。"
+            "\n\n確認すること:"
+            "\n  1. `docker compose ps` で backend が起動しているか"
+            "\n  2. 8000 番が他のプロジェクトに取られていないか。取られている場合は"
+            "\n     ポートをずらして起動し、この URL も合わせる:"
+            "\n       BACKEND_PORT=8010 FRONTEND_PORT=3010 docker compose up -d"
+            "\n       python3 scripts/seed_search_data.py http://localhost:8010"
         )
         return 1
 
