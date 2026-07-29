@@ -56,6 +56,10 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        # NEXT_PUBLIC_ はビルド時にバンドルへ焼き込まれるため、実行時の
+        # environment ではなく build args としても渡す必要がある（ADR-005）
+        NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-8000}
     environment:
       # Server Component からの取得。compose 内部のネットワークで解決する
       INTERNAL_API_URL: http://backend:8000
