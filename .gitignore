@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+next-env.d.ts
+
+# アップロードされた ZIP の保管先（compose がバインドマウントする。成果物なので追跡しない）
+storage/
+
+# 環境変数
+.env
+.env.local
+
+# OS
+.DS_Store
