@@ -60,8 +60,36 @@ cd backend && python3 scripts/seed_search_data.py
 
 http://localhost:3000
 
-> ポートを変えている場合（`BACKEND_PORT=8010 FRONTEND_PORT=3010 docker compose up -d`）は、
-> シード投入にも API の URL を渡す: `python3 scripts/seed_search_data.py http://localhost:8010`
+### ポートを変える場合の注意
+
+8000 / 3000 が他のプロジェクトに取られている場合はポートをずらす。**そのとき、
+`BACKEND_PORT` は毎回のコマンドに付ける**（`--build` を含むものにも）。
+
+```bash
+BACKEND_PORT=8010 FRONTEND_PORT=3010 docker compose up -d --build
+```
+
+```bash
+cd backend && python3 scripts/seed_search_data.py http://localhost:8010
+```
+
+ブラウザ用の API URL（`NEXT_PUBLIC_API_URL`）は**ビルド時にフロントのバンドルへ
+焼き込まれる**（[ADR-005](adr/ADR-005-frontend-data-fetching.md) / [learnings.md #9](learnings.md)）。
+`BACKEND_PORT` を付けずに一度でも `--build` すると、**画面は 8000 番を見に行くイメージのまま
+固定される**。症状はアップロードだけが失敗することで、一覧や詳細（Server Component から
+コンテナ内で取得）は正常に見えるため気づきにくい。
+
+焼き込まれている URL はこれで確認できる。
+
+```bash
+docker compose exec frontend sh -c 'grep -rho "http://localhost:[0-9]*" .next/static | sort -u'
+```
+
+食い違っていたら、`BACKEND_PORT` を付けて作り直す。
+
+```bash
+BACKEND_PORT=8010 FRONTEND_PORT=3010 docker compose up -d --build frontend
+```
 
 ---
 
