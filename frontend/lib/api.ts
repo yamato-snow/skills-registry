@@ -36,9 +36,14 @@ export type SkillSummary = {
   tags: string[];
   latest_version: number;
   updated_at: string;
+  // なぜこの Skill が出てきたか（ADR-006）。q 未指定なら空配列 / null
+  matched_fields: string[];
+  snippet: string | null;
 };
 
-export type SkillDetail = SkillSummary & {
+export type SkillDetail = Omit<SkillSummary, "matched_fields" | "snippet"> & {
+  // 最新版の SKILL.md 全文（ADR-007）
+  skill_md_body: string;
   file_tree: FileEntry[];
   versions: SkillVersion[];
 };
@@ -68,14 +73,14 @@ async function getFromServer<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-/** 一覧・検索（Server Component から呼ぶ）。 */
+/** 一覧・検索（Server Component から呼ぶ）。`tags` は繰り返しパラメータで AND。 */
 export async function fetchSkillsFromServer(params: {
   q?: string;
-  tag?: string;
+  tags?: string[];
 }): Promise<SkillSummary[]> {
   const query = new URLSearchParams();
   if (params.q) query.set("q", params.q);
-  if (params.tag) query.set("tag", params.tag);
+  for (const tag of params.tags ?? []) query.append("tag", tag);
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return getFromServer<SkillSummary[]>(`/skills${suffix}`);
 }
