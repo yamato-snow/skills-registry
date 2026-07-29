@@ -20,6 +20,11 @@ next-env.d.ts
 # まで巻き込んで無視してしまう
 /storage/
 
+# 手動テスト用に生成する ZIP（docs/manual-test.md）。
+# path traversal / symlink を含む危険な ZIP をリポジトリに置かないため、
+# 生成物として無視する。先頭の / を付けるのは learnings.md #3 の教訓
+/manual-test/
+
 # 環境変数
 .env
 .env.local
