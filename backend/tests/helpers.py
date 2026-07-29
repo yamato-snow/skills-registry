@@ -34,11 +34,18 @@ def build_skill_md(
     name: str = "sample-skill",
     description: str = "テスト用のサンプル Skill",
     tags: list[str] | None = None,
+    body: str = "# 本文",
 ) -> str:
+    """SKILL.md を組み立てる.
+
+    `body` を差し替えられるようにしてあるのは、本文が検索対象になった
+    （ADR-007）以降、「description には無いが本文にはある」ケースを
+    テストで作る必要があるため。
+    """
     lines = ["---", f"name: {name}", f"description: {description}"]
     if tags is not None:
         lines.append(f"tags: [{', '.join(tags)}]")
-    lines += ["---", "", "# 本文", ""]
+    lines += ["---", "", body, ""]
     return "\n".join(lines)
 
 

@@ -89,6 +89,7 @@ erDiagram
         uuid skill_id FK
         int version "skill 内の連番 1,2,3..."
         text description
+        text skill_md_body "frontmatter を除いた本文（deferred）"
         jsonb file_tree "ZIP の中身一覧"
         text storage_key "skills/{skill_id}/v{version}.zip"
         bigint size_bytes "ZIP 原本のサイズ"
@@ -110,6 +111,7 @@ erDiagram
 - **`skill_versions` に一意制約 `(skill_id, version)`** を張る。同時アップロードによる版番号の衝突を DB で弾く
 - **`file_tree` は JSONB**。`[{"path": "SKILL.md", "size": 1234}, ...]` の配列。詳細画面のために ZIP を開き直さなくて済む（[ADR-002](adr/ADR-002-zip-security-in-memory-inspection.md) で検査時に得た情報をそのまま保存する）
 - **`description` は版ごと**に持つ。説明文は版とともに変わるため。一覧に出すのは常に最新版の `description`
+- **`skill_md_body` は frontmatter を除いた本文**（[ADR-007](adr/ADR-007-store-skill-md-body.md)）。検索対象（[ADR-006](adr/ADR-006-search-multi-token-relevance-snippet.md)）と詳細ページのプレビューが同じカラムで両方成立する。frontmatter を含めない理由は「`name` に当たった Skill が本文にも当たったことになり、ヒット箇所の表示が意味をなさなくなる」ため。SQLAlchemy 上は `deferred` にし、必要な経路だけ `undefer` する（一覧が 1MB × 件数を無条件に引かないようにする）
 - **タグは Skill 単位**（版単位ではない）。再アップロード時は最新の frontmatter の内容で張り替える
 - **UUID を主キーにする**。連番 ID は「何件登録されているか」を URL から推測させる上、将来の分散化で衝突する
 
@@ -122,6 +124,8 @@ erDiagram
 - できること: `docker compose up` だけで DB が使える状態になる（第三者が 5 分で起動できる、という目標に直結）
 - できないこと: カラム追加・型変更が既存 DB に反映されない。スキーマを変えたら volume を作り直す必要がある
 - 移行時期: **データを消せなくなった時点**（＝誰かが本気で使い始めた時点）で Alembic を導入する。それ以前に入れても、マイグレーションファイルは全部 initial revision に潰れる
+
+> **フェーズ 2 で `skill_versions.skill_md_body` を追加した**（[ADR-007](adr/ADR-007-store-skill-md-body.md)）。既存の開発 DB には反映されないので、更新後は `docker compose down -v` が必要。データはデモのみで消して困らない。**「消せる」状態を保っていることが、Alembic をまだ入れない根拠そのもの**である。
 
 ## 4. API
 
@@ -183,14 +187,18 @@ sequenceDiagram
 
 ### `GET /skills?q=&tag=`
 
-- `q`: `name` / `description` への部分一致（`ILIKE`。[ADR-004](adr/ADR-004-search-postgres-ilike.md)）。`%` `_` はエスケープしてから渡す
-- `tag`: タグ名の完全一致
-- 並び順: 最新版の `created_at` 降順
-- 返すのは各 Skill の**最新版**のメタデータ（`id` / `name` / `description` / `tags` / `latest_version` / `updated_at`）
+- `q`: **空白区切りの複数語**。半角・全角どちらでも分割し、**全トークンが `name` / `description` / 本文のいずれかに当たる**ものだけを返す（AND。`ILIKE`。[ADR-004](adr/ADR-004-search-postgres-ilike.md) / [ADR-006](adr/ADR-006-search-multi-token-relevance-snippet.md)）。各トークンの `%` `_` はエスケープしてから渡す
+- `tag`: タグ名の完全一致。**繰り返しパラメータで複数指定でき、意味は AND**（`?tag=slack&tag=notification`）
+- 並び順: `q` 指定時は**関連度順**（トークンごとに `name` 3 点 / `description` 2 点 / 本文 1 点の最高点を合計。同点は最新版 `created_at` 降順）。`q` 無しのときは従来どおり最新版 `created_at` 降順
+- 返すのは各 Skill の**最新版**のメタデータ（`id` / `name` / `description` / `tags` / `latest_version` / `updated_at`）に加えて:
+  - `matched_fields`: `["name", "description", "body"]` のうち当たったもの（`q` 無しなら空配列）
+  - `snippet`: 本文ヒット時、最初のヒット位置の前後 40 文字（本文に当たっていなければ `null`）
+
+役割分担は「**SQL は絞り込み、Python は並べ替えと説明**」。順位とヒット箇所の判定は `app/services/search.py` の純粋関数が担当し、FastAPI にも SQLAlchemy にも依存しない（`zip_inspector.py` と同じ扱い）。
 
 ### `GET /skills/{id}`
 
-一覧の項目に加えて `file_tree`（最新版）と `versions`（全版の `version` / `size_bytes` / `created_at`）。
+一覧の項目に加えて `skill_md_body`（最新版の本文。[ADR-007](adr/ADR-007-store-skill-md-body.md)）、`file_tree`（最新版）、`versions`（全版の `version` / `size_bytes` / `created_at`）。
 
 ### `GET /skills/{id}/download?version=`
 
@@ -206,7 +214,7 @@ sequenceDiagram
 ```
 skills-registry/
 ├── docs/
-│   ├── adr/                     ADR 5本 + 索引
+│   ├── adr/                     ADR 7本 + 索引
 │   ├── design.md                このファイル
 │   ├── tasks.md                 実装タスク分解
 │   └── learnings.md             ハマった点・迷った判断（実装中に随時追記）
@@ -220,8 +228,9 @@ skills-registry/
 │   │   │   └── session.py       async engine, sessionmaker, get_db
 │   │   ├── schemas/skill.py     Pydantic v2 のレスポンス定義
 │   │   ├── services/
-│   │   │   ├── zip_inspector.py ★ FastAPI 非依存の純粋関数群
-│   │   │   └── skill_service.py 永続化のオーケストレーション
+│   │   │   ├── zip_inspector.py ★ FastAPI 非依存の純粋関数群（ZIP 検証）
+│   │   │   ├── search.py        ★ FastAPI 非依存の純粋関数群（順位・ヒット箇所）
+│   │   │   └── skill_service.py 永続化と絞り込みのオーケストレーション
 │   │   ├── storage/
 │   │   │   ├── base.py          StorageBackend Protocol
 │   │   │   └── local.py         LocalStorage
@@ -232,16 +241,20 @@ skills-registry/
 │   │   ├── conftest.py
 │   │   ├── helpers.py           make_skill_zip()（ZIP を動的生成）
 │   │   ├── test_zip_inspector.py
+│   │   ├── test_search.py
 │   │   └── test_api_skills.py
 │   ├── pyproject.toml           依存 / ruff / pytest 設定
 │   └── Dockerfile               マルチステージ
 ├── frontend/
 │   ├── app/
 │   │   ├── page.tsx             一覧（SC）
-│   │   ├── skills/[id]/page.tsx 詳細（SC）
+│   │   ├── skills/[id]/page.tsx 詳細（SC。Markdown プレビュー）
 │   │   ├── upload/page.tsx      アップロード（CC）
-│   │   └── _components/         SearchForm(CC) / SkillCard(SC) / FileTree(SC)
-│   ├── lib/api.ts               サーバ用 / ブラウザ用 fetch を分離
+│   │   └── _components/         SearchForm(CC) ← このプロジェクト唯一の CC
+│   ├── lib/
+│   │   ├── api.ts               サーバ用 / ブラウザ用 fetch を分離
+│   │   ├── search.ts            検索条件と URL の相互変換（純粋関数）
+│   │   └── highlight.tsx        ヒット語の <mark> 包み（純粋関数）
 │   ├── next.config.ts           output: "standalone"
 │   └── Dockerfile               マルチステージ
 ├── .github/workflows/ci.yml     lint + test（デプロイジョブは作らない）
@@ -249,12 +262,12 @@ skills-registry/
 └── README.md
 ```
 
-### `zip_inspector.py` を独立させる理由
+### `zip_inspector.py` / `search.py` を独立させる理由
 
-このファイルだけが **FastAPI にも SQLAlchemy にも依存しない**。入力は `bytes`、出力はデータクラス。
+この 2 つだけが **FastAPI にも SQLAlchemy にも依存しない**。入力は `bytes` や文字列で、出力はデータクラス・数値・リスト。
 
-- セキュリティの中核なので、HTTP の文脈なしに単体でテストできることに価値がある（カバレッジ目標 90%+）
-- [ADR-001](adr/ADR-001-zip-parsing-sync-vs-async.md) の移行基準に抵触して非同期化する日が来ても、**呼び出し元を差し替えるだけ**でロジックは動く
+- `zip_inspector.py` はセキュリティの中核なので、HTTP の文脈なしに単体でテストできることに価値がある（カバレッジ目標 90%+）。[ADR-001](adr/ADR-001-zip-parsing-sync-vs-async.md) の移行基準に抵触して非同期化する日が来ても、**呼び出し元を差し替えるだけ**でロジックは動く
+- `search.py` は順位の規則そのもの（[ADR-006](adr/ADR-006-search-multi-token-relevance-snippet.md)）。SQL の巨大な `CASE` 式ではなく Python の関数にしてあるので、**DB を立てずに「name ヒットが本文ヒットより上に来る」を検証できる**
 
 ## 6. 認証・認可（設計のみ・今回は実装しない）
 
@@ -293,7 +306,8 @@ frontend 側:
 
 後任者が「なぜ遅いのか / なぜ動かないのか」を探すところから始めなくて済むよう、既知の制約を書き残す。
 
-- **検索は件数に線形**（[ADR-004](adr/ADR-004-search-postgres-ilike.md)）。数千件を超えたら pg_trgm を検討する
+- **検索は件数に線形**（[ADR-004](adr/ADR-004-search-postgres-ilike.md)）。数千件を超えたら pg_trgm を検討する。関連度のスコアリングも絞り込み済みの行に対して Python で行う（[ADR-006](adr/ADR-006-search-multi-token-relevance-snippet.md)）ので、線形であること自体は変わらない
+- **一覧は `SKILL.md` 本文を読まない**（[ADR-007](adr/ADR-007-store-skill-md-body.md)）。`skill_md_body` は `deferred` にしてあり、`q` 指定時の一覧・詳細だけが `undefer` する。ここを外すと一覧が最大 1MB × 件数を引く
 - **アップロードは API のワーカーを占有する**（[ADR-001](adr/ADR-001-zip-parsing-sync-vs-async.md)）。同時アップロードが増えたら非同期化を検討する
 - **メモリ使用量は「同時アップロード数 × ZIP サイズ」**（[ADR-002](adr/ADR-002-zip-security-in-memory-inspection.md)）。ECS のメモリ設定はこの前提で決める
 - **50MB のサイズ上限は経路上のすべてに設定が要る**。ALB / リバースプロキシ側で先に切られると、アプリのエラーメッセージが出ないまま失敗する

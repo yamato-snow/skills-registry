@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     String,
     Table,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -79,6 +80,11 @@ class SkillVersion(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     # 説明文は版ごとに変わりうるので Skill ではなく版に持つ
     description: Mapped[str] = mapped_column(String(2000), nullable=False, default="")
+    # frontmatter を除いた SKILL.md 本文（ADR-007）。name / description は
+    # 構造化して別に持っているので、ここに再掲すると検索のヒット判定が濁る。
+    # deferred にしているのは、一覧が最大 1MB × 件数を無条件に引くのを避けるため。
+    # 必要な箇所（検索時のスコアリング・詳細ページ）だけ undefer して読む
+    skill_md_body: Mapped[str] = mapped_column(Text, nullable=False, default="", deferred=True)
     # ZIP の中身一覧 [{"path": ..., "size": ...}]。詳細画面のために ZIP を開き直さない（ADR-002）
     file_tree: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     # S3 互換のキー体系。ローカル実装ではそのままサブディレクトリになる（ADR-003）
