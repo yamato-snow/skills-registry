@@ -47,12 +47,21 @@ export default async function HomePage({ searchParams }: Props) {
 
 function SkillCard({ skill }: { skill: SkillSummary }) {
   return (
-    <li className="rounded-lg border border-slate-200 bg-white p-4 transition hover:border-slate-400">
+    // カード全体をクリック領域にする（stretched link パターン）。
+    // カードは枠線がホバーで変わるので「押せそう」に見えるが、リンクが名前の
+    // テキストだけだと、そこ以外を押しても何も起きない。見た目が約束している
+    // ことと実際の当たり判定を一致させる。
+    //
+    // カード自体を <Link> で包まないのは、中にタグへのリンクがあるため。
+    // <a> の入れ子は HTML として不正で、ブラウザが構造を壊して解釈する。
+    // 代わりに名前リンクの ::after を absolute inset-0 でカード全面へ広げ、
+    // タグ側を relative + z-10 で上に載せて、両方を生かす。
+    <li className="relative rounded-lg border border-slate-200 bg-white p-4 transition hover:border-slate-400 focus-within:border-slate-500">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <Link
             href={`/skills/${skill.id}`}
-            className="font-semibold text-slate-900 hover:underline"
+            className="font-semibold text-slate-900 hover:underline after:absolute after:inset-0 after:content-['']"
           >
             {skill.name}
           </Link>
@@ -67,7 +76,9 @@ function SkillCard({ skill }: { skill: SkillSummary }) {
           <Link
             key={name}
             href={`/?tag=${encodeURIComponent(name)}`}
-            className="rounded-full bg-slate-100 px-2 py-0.5 hover:bg-slate-200"
+            // z-10 でカード全面のオーバーレイより上に出す。これが無いと
+            // タグを押しても詳細ページへ飛んでしまう
+            className="relative z-10 rounded-full bg-slate-100 px-2 py-0.5 hover:bg-slate-200"
           >
             #{name}
           </Link>
