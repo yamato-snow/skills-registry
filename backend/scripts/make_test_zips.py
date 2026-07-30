@@ -113,7 +113,7 @@ CASES: list[tuple[str, str, bytes, str]] = [
         make_zip_with_raw_entries({"SKILL.md": DEFAULT_SKILL_MD, "..\\..\\x": "payload"}),
         "400",
     ),
-    ("09", "09_too_many_files.zip", make_zip_with_many_files(500), "413（501 ファイル）"),
+    ("09", "09_too_many_files.zip", make_zip_with_many_files(2000), "413（2001 ファイル）"),
     ("10", "10_zip_bomb.zip", make_zip_bomb(60 * 1024 * 1024), "413（一瞬で拒否される）"),
     ("11", "11_no_skill_md.zip", make_zip({"README.md": "SKILL.md がない"}), "422"),
     (
