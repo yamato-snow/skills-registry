@@ -2,6 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-07-29
+- **Amended by**: [ADR-008](ADR-008-validation-limits-and-utf8.md)（上限値の根拠を再導出し `MAX_FILES` の既定を変更。in-memory 検査という Decision は不変）
 
 ## Context
 

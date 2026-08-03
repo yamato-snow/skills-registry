@@ -37,7 +37,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/skills_registry
       STORAGE_DIR: /data/storage
       MAX_TOTAL_SIZE: "52428800" # 50MB
-      MAX_FILES: "500"
+      MAX_FILES: "2000" # 値の根拠は ADR-008
       # ブラウザ（アップロード画面）から直接叩かれるため許可が要る（ADR-005）
       CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
     ports:

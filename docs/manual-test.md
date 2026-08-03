@@ -115,7 +115,7 @@ BACKEND_PORT=8010 FRONTEND_PORT=3010 docker compose up -d --build frontend
 | 06 | path traversal を拒否する | `06_path_traversal.zip` | アップロード | 失敗。「安全でないパスを含む ZIP です: `'../../evil.sh'`」 | |
 | 07 | シンボリックリンクを拒否する | `07_symlink.zip` | アップロード | 失敗。「シンボリックリンクを含む ZIP は受け付けません」 | |
 | 08 | バックスラッシュのパスを拒否する | `08_backslash.zip` | アップロード | 失敗。「安全でないパスを含む ZIP です」 | |
-| 09 | ファイル数の上限を守る | `09_too_many_files.zip` | アップロード | 失敗。「ZIP 内のファイル数が上限（500 件）を超えています」 | |
+| 09 | ファイル数の上限を守る | `09_too_many_files.zip` | アップロード | 失敗。「ZIP 内のファイル数が上限（2000 件）を超えています」 | |
 | 10 | zip bomb を**解凍せずに**弾く | `10_zip_bomb.zip` | アップロード | 失敗。「展開後の合計サイズが上限（50MB）を超えています」。**体感で一瞬**（数十 KB のファイルを送っただけで、60MB を展開していない証拠。待たされたら ❌） | |
 | 11 | SKILL.md が無い ZIP を拒否する | `11_no_skill_md.zip` | アップロード | 失敗。「SKILL.md が見つかりません。…」 | |
 | 12 | SKILL.md が複数ある ZIP を拒否する | `12_multiple_skill_md.zip` | アップロード | 失敗。「SKILL.md が複数見つかりました（SKILL.md、sub/SKILL.md）。1 つにしてください」 | |

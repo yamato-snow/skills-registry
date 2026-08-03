@@ -180,7 +180,7 @@ sequenceDiagram
 |---|---|
 | `201` | 登録成功 |
 | `400` | ZIP として開けない / 危険なエントリ（path traversal・symlink・絶対パス） |
-| `413` | 展開後合計サイズ超過（既定 50MB）/ ファイル数超過（既定 500） |
+| `413` | 展開後合計サイズ超過（既定 50MB）/ ファイル数超過（既定 2000） |
 | `422` | `SKILL.md` が無い・複数ある / frontmatter が不正・`name` や `description` が無い |
 
 「壊れた入力（400）」「大きすぎる入力（413）」「形式は合っているが中身の要件を満たさない（422）」で切り分ける。
@@ -291,12 +291,15 @@ skills-registry/
 
 すべて `core/config.py`（pydantic-settings）に集約し、コード内に既定値を散らさない。ECS ではタスク定義の環境変数としてそのまま注入できる。
 
+**この表は `core/config.py` の `Settings` 全フィールドと 1:1 対応する。フィールドを足したらこの表にも足す（`backend/tests/test_docs_consistency.py` で検証される）。**
+
 | 変数 | 既定 | 用途 |
 |---|---|---|
 | `DATABASE_URL` | — | `postgresql+asyncpg://...` |
 | `STORAGE_DIR` | `./storage` | `LocalStorage` の保存先 |
 | `MAX_TOTAL_SIZE` | `52428800`（50MB） | 展開後合計サイズの上限 |
-| `MAX_FILES` | `500` | ZIP 内ファイル数の上限 |
+| `MAX_FILES` | `2000` | ZIP 内ファイル数の上限（値の根拠は [ADR-008](adr/ADR-008-validation-limits-and-utf8.md)） |
+| `MAX_SKILL_MD_SIZE` | `1048576`（1MB） | `SKILL.md` 単体の読み出し上限（ヘッダ偽装対策の実読み出し上限） |
 | `CORS_ORIGINS` | `http://localhost:3000` | ブラウザからの直接 POST を許可するオリジン |
 
 frontend 側:
